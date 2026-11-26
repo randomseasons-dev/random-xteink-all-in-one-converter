@@ -1,3 +1,17 @@
+# random-xteink-all-in-one-converter
+
+Manga (.xtch) and sleep-wallpaper converter built only for the **XTEink X4 Pro** (480x800, UC8179 screen) on **CrossPoint 2.0**.
+
+# Ver 1.7.0 changelog:
+- **Renamed to random-xteink-all-in-one-converter.**
+- **X4 Pro only.** The device choice is gone (X4 and X3 support removed); everything is made for the X4 Pro at 480x800.
+- **Wallpapers now show with the right shades on CrossPoint 2.0.** Every wallpaper is saved as a 2-bit BMP at the exact screen size, which CrossPoint 2.0 draws as-is (no re-dithering on the device), with or without dithering.
+- The dithering aims at the shades the X4 Pro's UC8179 screen really shows (both grays look darker than evenly spaced), so mid-tones and skin come out right instead of muddy.
+- Dithering off now rounds each pixel to the nearest of the 4 shades (still a 2-bit BMP shown as-is); the old 24-bit "plain gray" output is gone.
+- The preview shows the shades the screen will show.
+- Output goes into a **.sleep** folder (zips hold a .sleep folder): copy it to the root of the SD card and set Sleep Screen to Custom.
+- Note: many PC photo viewers can't open 2-bit BMPs; use the app's preview.
+
 # Ver 1.6.2 changelog:
 - **Fixed: Dithered wallpapers looked washed out on CrossPoint 2.0.** CrossPoint 2.0 re-dithers any sleep picture that is not a 1- or 2-bit BMP, which made our 8-bit wallpapers lighter. Dithered wallpapers are now saved as **2-bit BMPs** holding exactly the 4 screen grays, so CrossPoint 2.0 shows them as previewed with no re-processing. They also show correctly on CrossPoint 1.6.x. Re-convert wallpapers made with 1.6.1.
 - Note: many PC photo viewers can't open 2-bit BMPs. Use the app's preview to check them; the device reads them fine.
@@ -49,10 +63,10 @@ IMPORTANT: I made this app because unique features like cropping to overlapping 
 - Customizable dithering method. 
 - Other ideas. 
 
-# xteink all-in-one converter
+# About random-xteink-all-in-one-converter
 
 An **offline** desktop app that converts manga (CBZ/CBR archives or folders of images)
-into `.xtch` files for **XTEink** e-readers: **X4**, **X4 Pro** and **X3**.
+into `.xtch` files for the **XTEink X4 Pro** e-reader.
 
 Built with [Tauri](https://tauri.app/) (Rust core + React UI). No internet required — all
 processing runs locally.
@@ -66,7 +80,7 @@ processing runs locally.
   double-page spreads.
 - **Double-spread handling:** shows the full spread, then splits it into two pages in
   reading order (right-to-left in Manga mode).
-- **Devices:** X4 and X4 Pro (480×800), X3 (528×792) — the chosen device sets the page size.
+- **Device:** XTEink X4 Pro only (480×800, UC8179 screen).
 - **Orientation:** Portrait or Landscape (e.g. 480×800 / 800×480 on the X4).
 - **Page split (landscape):** overlapping thirds (15% overlap), split-in-half, or none.
 - **Resize:** preserve aspect ratio (white-padded) or stretch to fill.

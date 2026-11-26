@@ -25,18 +25,14 @@ pub enum Split {
 /// in the pipeline; add a new device by adding a variant + its row in `portrait()`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Device {
-    X4,
     X4Pro,
-    X3,
 }
 
 impl Device {
     /// Portrait page canvas (width, height) in pixels.
     pub fn portrait(self) -> (u32, u32) {
         match self {
-            Device::X4 => (480, 800),    // 4.3", 800x480 panel
-            Device::X4Pro => (480, 800), // 4.3", same 800x480 resolution as the X4
-            Device::X3 => (528, 792),    // 3.7", 792x528 panel
+            Device::X4Pro => (480, 800), // 4.3", 800x480 panel
         }
     }
 
@@ -66,7 +62,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            device: Device::X4,
+            device: Device::X4Pro,
             orientation: Orientation::Portrait,
             split: Split::None,
             preserve_ratio: true,

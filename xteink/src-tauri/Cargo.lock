@@ -3313,6 +3313,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "random-xteink"
+version = "1.7.0"
+dependencies = [
+ "base64 0.22.1",
+ "mimalloc",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "xtch-core",
+ "zip",
+]
+
+[[package]]
 name = "rav1e"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5733,22 +5749,6 @@ dependencies = [
  "image",
  "imageproc",
  "rayon",
- "zip",
-]
-
-[[package]]
-name = "xteink"
-version = "1.6.2"
-dependencies = [
- "base64 0.22.1",
- "mimalloc",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "xtch-core",
  "zip",
 ]
 

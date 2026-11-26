@@ -1,7 +1,9 @@
 //! Wallpaper (sleep-screen) maker: one picture -> one device-size, always-portrait
-//! 24-bit BMP. Steps, in order: ratio -> fill/crop (+ border colour) -> dither.
+//! 2-bit BMP that CrossPoint draws as-is. Steps, in order: ratio -> fill/crop
+//! (+ border colour) -> 4-shade quantization (dithered or rounded) aimed at the shades
+//! the X4 Pro's UC8179 screen really shows.
 
-use crate::pipeline::{dither, Device};
+use crate::pipeline::Device;
 use image::imageops::FilterType;
 use image::{DynamicImage, GrayImage, ImageDecoder, Luma};
 use std::path::{Path, PathBuf};
@@ -16,14 +18,77 @@ pub struct WallpaperSettings {
     pub fill_screen: bool,
     /// Border colour when borders occur: black (true) or white (false).
     pub black_border: bool,
-    /// Floyd–Steinberg dither to the 4 device gray levels. false = plain 256-level gray.
+    /// Floyd–Steinberg dither to the 4 screen shades. false = round each pixel to the nearest shade.
     pub dither: bool,
+}
+
+/// How CrossPoint's own tuning says the 4 shades look on the X4 Pro's UC8179 screen
+/// (black, dark gray, light gray, white): both grays darker than evenly spaced.
+fn shade_levels(_s: &WallpaperSettings) -> [f32; 4] {
+    [15.0, 35.0, 90.0, 210.0]
+}
+
+/// Picture gray (0..255) -> palette index 0..3 per pixel. The picture's black..white is first
+/// mapped onto the screen's black..white shades, then dithered (or rounded) against the
+/// screen's real shades, so mid-tones land where they look right on the panel.
+pub fn quantize(g: &GrayImage, s: &WallpaperSettings) -> Vec<u8> {
+    let lv = shade_levels(s);
+    let (lo, hi) = (lv[0], lv[3]);
+    let (w, h) = (g.width() as usize, g.height() as usize);
+    let mut buf: Vec<f32> = g.pixels().map(|p| lo + p.0[0] as f32 * (hi - lo) / 255.0).collect();
+    let nearest = |v: f32| -> usize {
+        let mut best = 0;
+        for k in 1..4 {
+            if (v - lv[k]).abs() < (v - lv[best]).abs() {
+                best = k;
+            }
+        }
+        best
+    };
+    let mut out = vec![0u8; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let old = buf[i].clamp(lo, hi);
+            let k = nearest(old);
+            out[i] = k as u8;
+            if !s.dither {
+                continue;
+            }
+            let err = old - lv[k];
+            if x + 1 < w {
+                buf[i + 1] += err * 7.0 / 16.0;
+            }
+            if y + 1 < h {
+                if x > 0 {
+                    buf[i + w - 1] += err * 3.0 / 16.0;
+                }
+                buf[i + w] += err * 5.0 / 16.0;
+                if x + 1 < w {
+                    buf[i + w + 1] += err * 1.0 / 16.0;
+                }
+            }
+        }
+    }
+    out
+}
+
+/// What the preview shows for each palette index: the screen's shades, stretched so black is
+/// black and white is white on the PC monitor (keeps how dark the grays look on the panel).
+fn preview_shades(s: &WallpaperSettings) -> [u8; 4] {
+    let lv = shade_levels(s);
+    let (lo, hi) = (lv[0], lv[3]);
+    let mut o = [0u8; 4];
+    for k in 0..4 {
+        o[k] = ((lv[k] - lo) * 255.0 / (hi - lo)).round() as u8;
+    }
+    o
 }
 
 impl Default for WallpaperSettings {
     fn default() -> Self {
         WallpaperSettings {
-            device: Device::X4,
+            device: Device::X4Pro,
             preserve_ratio: true,
             fill_screen: true,
             black_border: false,
@@ -36,7 +101,7 @@ fn resize(g: &GrayImage, w: u32, h: u32) -> GrayImage {
     image::imageops::resize(g, w.max(1), h.max(1), FilterType::Lanczos3)
 }
 
-/// Turn one grayscale picture into the final device-size wallpaper.
+/// Place one grayscale picture on the device-size canvas (before the 4-shade step).
 pub fn make_wallpaper(img: &GrayImage, s: &WallpaperSettings) -> GrayImage {
     let (pw, ph) = s.device.portrait();
     let (w, h) = (img.width().max(1), img.height().max(1));
@@ -66,11 +131,7 @@ pub fn make_wallpaper(img: &GrayImage, s: &WallpaperSettings) -> GrayImage {
     let oy = (ph as i64 - placed.height() as i64) / 2;
     image::imageops::overlay(&mut canvas, &placed, ox, oy);
 
-    if s.dither {
-        GrayImage::from_raw(pw, ph, dither(&canvas)).expect("dither keeps the page size")
-    } else {
-        canvas
-    }
+    canvas
 }
 
 /// Decode a picture to grayscale, honouring EXIF rotation (phone photos) and
@@ -100,51 +161,19 @@ pub fn load_picture(path: &Path) -> Result<GrayImage, String> {
     Ok(out)
 }
 
-/// Load + convert one picture file to wallpaper BMP bytes, in the form CrossPoint shows
-/// without re-processing (see `encode_for_device`).
+/// Load + convert one picture file to wallpaper BMP bytes: a screen-size 2-bit BMP, which
+/// CrossPoint 2.0 (and 1.6.x) draws exactly as-is.
 pub fn render_bmp(path: &Path, s: &WallpaperSettings) -> Result<Vec<u8>, String> {
-    Ok(encode_for_device(&make_wallpaper(&load_picture(path)?, s), s))
+    let canvas = make_wallpaper(&load_picture(path)?, s);
+    Ok(encode_bmp2_4gray(canvas.width(), canvas.height(), &quantize(&canvas, s)))
 }
 
-/// CrossPoint re-quantizes high-colour BMPs with its own cut-offs, which shifts our grays a
-/// level lighter. So:
-/// - dithered: a 2-bit BMP whose palette is exactly the 4 screen grays. CrossPoint 1.6.x maps
-///   each pixel straight to its level, and CrossPoint 2.0 draws a screen-sized BMP of <= 2 bits
-///   as-is (an 8-bit one is re-dithered there, washing it out) — no cut-offs, no re-dither;
-/// - plain gray: a 24-bit BMP tone-mapped so the device's cut-offs split it like an even
-///   4-level quantization would (X4 uses even cut-offs; X4 Pro/X3 the legacy 30/55/150).
-pub fn encode_for_device(g: &GrayImage, s: &WallpaperSettings) -> Vec<u8> {
-    if s.dither {
-        return encode_bmp2_4gray(g);
-    }
-    match s.device {
-        Device::X4 => encode_bmp24(g),
-        Device::X4Pro | Device::X3 => {
-            // even-quantization boundaries -> device boundaries, piecewise linear
-            const PTS: [(f32, f32); 5] =
-                [(0.0, 0.0), (42.5, 30.0), (127.5, 55.0), (212.5, 150.0), (255.0, 255.0)];
-            let lut: Vec<u8> = (0..256)
-                .map(|v| {
-                    let v = v as f32;
-                    let k = PTS.windows(2).position(|w| v <= w[1].0).unwrap_or(3);
-                    let ((x0, y0), (x1, y1)) = (PTS[k], PTS[k + 1]);
-                    (y0 + (v - x0) * (y1 - y0) / (x1 - x0)).round() as u8
-                })
-                .collect();
-            let mut t = g.clone();
-            for p in t.pixels_mut() {
-                p.0[0] = lut[p.0[0] as usize];
-            }
-            encode_bmp24(&t)
-        }
-    }
-}
-
-/// Uncompressed 2-bit palettized BMP with a 4-entry palette {0, 85, 170, 255}; pixels must
-/// already be on those levels (the dithered output is). Four pixels per byte, leftmost pixel
-/// in the high bits; rows padded to 4 bytes; bottom-up.
-pub fn encode_bmp2_4gray(g: &GrayImage) -> Vec<u8> {
-    let (w, h) = (g.width() as usize, g.height() as usize);
+/// Uncompressed 2-bit palettized BMP with a 4-entry palette {0, 85, 170, 255} (CrossPoint maps
+/// that palette straight to its 4 screen shades). `idx` = palette index 0..3 per pixel,
+/// row-major top-down. Four pixels per byte, leftmost pixel in the high bits; rows padded to
+/// 4 bytes; bottom-up.
+pub fn encode_bmp2_4gray(w: u32, h: u32, idx: &[u8]) -> Vec<u8> {
+    let (w, h) = (w as usize, h as usize);
     let row = ((w + 3) / 4 + 3) & !3; // 4 px per byte, rows padded to 4 bytes
     let data_off = 54 + 4 * 4;
     let data_len = row * h;
@@ -171,9 +200,7 @@ pub fn encode_bmp2_4gray(g: &GrayImage) -> Vec<u8> {
     for y in (0..h).rev() {
         line.iter_mut().for_each(|b| *b = 0);
         for x in 0..w {
-            let v = g.get_pixel(x as u32, y as u32).0[0] as u32;
-            let idx = ((v + 42) / 85).min(3) as u8; // palette index of the nearest level
-            line[x / 4] |= idx << (6 - (x % 4) * 2);
+            line[x / 4] |= (idx[y * w + x] & 3) << (6 - (x % 4) * 2);
         }
         out.extend_from_slice(&line);
     }
@@ -203,41 +230,14 @@ pub fn render_bmp_par(
     }
 }
 
-/// Uncompressed 24-bit BMP (BITMAPINFOHEADER, BI_RGB, bottom-up).
-pub fn encode_bmp24(g: &GrayImage) -> Vec<u8> {
-    let (w, h) = (g.width() as usize, g.height() as usize);
-    let row = (w * 3 + 3) & !3; // rows padded to 4 bytes
-    let data_len = row * h;
-    let mut out = Vec::with_capacity(54 + data_len);
-    out.extend_from_slice(b"BM");
-    out.extend_from_slice(&((54 + data_len) as u32).to_le_bytes()); // file size
-    out.extend_from_slice(&[0u8; 4]); // reserved
-    out.extend_from_slice(&54u32.to_le_bytes()); // pixel data offset
-    out.extend_from_slice(&40u32.to_le_bytes()); // BITMAPINFOHEADER size
-    out.extend_from_slice(&(w as i32).to_le_bytes());
-    out.extend_from_slice(&(h as i32).to_le_bytes()); // positive = bottom-up rows
-    out.extend_from_slice(&1u16.to_le_bytes()); // planes
-    out.extend_from_slice(&24u16.to_le_bytes()); // bits per pixel
-    out.extend_from_slice(&0u32.to_le_bytes()); // BI_RGB (no compression)
-    out.extend_from_slice(&(data_len as u32).to_le_bytes());
-    out.extend_from_slice(&2835i32.to_le_bytes()); // 72 DPI
-    out.extend_from_slice(&2835i32.to_le_bytes());
-    out.extend_from_slice(&0u32.to_le_bytes()); // palette colours
-    out.extend_from_slice(&0u32.to_le_bytes()); // important colours
-    let pad = row - w * 3;
-    for y in (0..h).rev() {
-        for x in 0..w {
-            let v = g.get_pixel(x as u32, y as u32).0[0];
-            out.extend_from_slice(&[v, v, v]); // B, G, R
-        }
-        out.extend(std::iter::repeat(0u8).take(pad));
-    }
-    out
-}
-
-/// Render a wallpaper to PNG bytes (for the UI preview).
+/// Render a wallpaper to PNG bytes for the UI preview, in the shades the screen shows.
 pub fn render_png(path: &Path, s: &WallpaperSettings) -> Result<Vec<u8>, String> {
-    let img = make_wallpaper(&load_picture(path)?, s);
+    let canvas = make_wallpaper(&load_picture(path)?, s);
+    let shades = preview_shades(s);
+    let idx = quantize(&canvas, s);
+    let img = GrayImage::from_fn(canvas.width(), canvas.height(), |x, y| {
+        Luma([shades[idx[(y * canvas.width() + x) as usize] as usize]])
+    });
     let mut buf = std::io::Cursor::new(Vec::new());
     DynamicImage::ImageLuma8(img)
         .write_to(&mut buf, image::ImageFormat::Png)

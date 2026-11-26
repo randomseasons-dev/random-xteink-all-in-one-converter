@@ -1,4 +1,4 @@
-//! xtch-core: convert CBZ/CBR/image folders into `.xtch` for XTEink readers (X4, X4 Pro, X3).
+//! xtch-core: convert CBZ/CBR/image folders into `.xtch` for XTEink readers (X4 Pro).
 
 pub mod pipeline;
 pub mod wallpaper;

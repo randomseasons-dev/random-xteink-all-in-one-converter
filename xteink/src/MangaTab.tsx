@@ -4,8 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import {
-  DeviceId,
-  DeviceSelect,
+  DeviceInfo,
   baseName,
   fmtSize,
   useDismiss,
@@ -31,15 +30,7 @@ type ConvertResult = {
   error: string | null;
 };
 
-export default function MangaTab({
-  active,
-  device,
-  setDevice,
-}: {
-  active: boolean;
-  device: DeviceId;
-  setDevice: (d: DeviceId) => void;
-}) {
+export default function MangaTab({ active }: { active: boolean }) {
   const [files, setFiles] = useState<string[]>([]);
   const [browseMenu, setBrowseMenu] = useState(false);
   const [opts, setOpts] = useState<Opts>({
@@ -115,7 +106,7 @@ export default function MangaTab({
       try {
         const res = await invoke<{ url: string; total: number; index: number }>(
           "preview_page",
-          { path: firstFile, opts: { ...opts, device }, index: pvIndex }
+          { path: firstFile, opts: opts, index: pvIndex }
         );
         if (cancelled) return;
         setPvUrl(res.url);
@@ -134,7 +125,7 @@ export default function MangaTab({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [firstFile, opts, device, pvIndex]);
+  }, [firstFile, opts, pvIndex]);
 
   const pvNext = () => setPvIndex((i) => Math.min(i + 1, Math.max(pvTotal - 1, 0)));
   const pvPrev = () => setPvIndex((i) => Math.max(i - 1, 0));
@@ -182,7 +173,7 @@ export default function MangaTab({
         Number.isFinite(n) && n >= 10 && n <= 500 ? n : null;
       const res = await invoke<ConvertResult[]>("convert", {
         paths: files,
-        opts: { ...opts, device, split_mb },
+        opts: { ...opts, split_mb },
         outDir: null,
       });
       setResults(res);
@@ -201,7 +192,7 @@ export default function MangaTab({
     } finally {
       setBusy(false);
     }
-  }, [files, opts, device, splitText]);
+  }, [files, opts, splitText]);
 
   const doPreview = useCallback(
     async (path: string) => {
@@ -210,7 +201,7 @@ export default function MangaTab({
       try {
         const urls = await invoke<string[]>("preview", {
           path,
-          opts: { ...opts, device },
+          opts: opts,
         });
         setPreviewPages(urls);
       } catch (e) {
@@ -220,7 +211,7 @@ export default function MangaTab({
         setPreviewBusy(false);
       }
     },
-    [opts, device]
+    [opts]
   );
 
   return (
@@ -320,7 +311,7 @@ export default function MangaTab({
 
         {/* MIDDLE: settings */}
         <section className="col">
-          <DeviceSelect device={device} onChange={setDevice} />
+          <DeviceInfo />
 
           <div className="panel">
             <div className="panel-h">BASIC SETTINGS</div>

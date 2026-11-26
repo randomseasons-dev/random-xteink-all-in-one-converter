@@ -19,8 +19,6 @@ struct Progress {
 /// Settings coming from the UI.
 #[derive(serde::Deserialize, Clone)]
 struct Opts {
-    #[serde(default = "default_device")]
-    device: String, // "x4" | "x4pro" | "x3"
     orientation: String, // "portrait" | "landscape"
     split: String,       // "none" | "half" | "thirds"
     preserve_ratio: bool,
@@ -33,18 +31,6 @@ struct Opts {
     split_mb: Option<u32>, // split output into files of <= N MB (folders only)
 }
 
-fn default_device() -> String {
-    "x4".into()
-}
-
-fn parse_device(d: &str) -> Device {
-    match d {
-        "x4pro" => Device::X4Pro,
-        "x3" => Device::X3,
-        _ => Device::X4,
-    }
-}
-
 fn default_blob() -> f32 {
     0.004
 }
@@ -52,7 +38,7 @@ fn default_blob() -> f32 {
 impl Opts {
     fn to_settings(&self) -> Settings {
         Settings {
-            device: parse_device(&self.device),
+            device: Device::X4Pro,
             orientation: if self.orientation == "landscape" {
                 Orientation::Landscape
             } else {
@@ -283,8 +269,6 @@ async fn preview_page(path: String, opts: Opts, index: usize) -> Result<PreviewO
 /// Wallpaper settings coming from the UI.
 #[derive(serde::Deserialize, Clone)]
 struct WallOpts {
-    #[serde(default = "default_device")]
-    device: String,
     preserve_ratio: bool,
     fill_screen: bool,
     black_border: bool,
@@ -296,7 +280,7 @@ struct WallOpts {
 impl WallOpts {
     fn to_settings(&self) -> WallpaperSettings {
         WallpaperSettings {
-            device: parse_device(&self.device),
+            device: Device::X4Pro,
             preserve_ratio: self.preserve_ratio,
             fill_screen: self.fill_screen,
             black_border: self.black_border,
@@ -369,7 +353,10 @@ struct WallGroup {
     dir_path: PathBuf,
 }
 
-const OUT_NAME: &str = "xteink screens";
+/// Output folder = CrossPoint's hidden sleep-wallpaper folder; copy it to the SD card root.
+const OUT_NAME: &str = ".sleep";
+/// Zip name for loose pictures (the zip itself holds a `.sleep/` folder).
+const ZIP_NAME: &str = "sleep wallpapers";
 
 fn wall_groups(paths: &[String]) -> Vec<WallGroup> {
     let mut groups: Vec<WallGroup> = Vec::new();
@@ -403,7 +390,7 @@ fn wall_groups(paths: &[String]) -> Vec<WallGroup> {
                             .unwrap_or("pictures")
                             .to_string(),
                         pics: vec![path.to_path_buf()],
-                        zip_path: parent.join(format!("{}.zip", OUT_NAME)),
+                        zip_path: parent.join(format!("{}.zip", ZIP_NAME)),
                         dir_path: parent.join(OUT_NAME),
                     });
                 }
@@ -452,7 +439,8 @@ impl WallSink {
             WallSink::Zip(z) => {
                 let opts = zip::write::SimpleFileOptions::default()
                     .compression_method(zip::CompressionMethod::Deflated);
-                z.start_file(name, opts).map_err(|e| e.to_string())?;
+                // Unzipping onto the SD card root gives /.sleep/<name>.
+                z.start_file(format!("{}/{}", OUT_NAME, name), opts).map_err(|e| e.to_string())?;
                 z.write_all(bytes).map_err(|e| e.to_string())
             }
         }
@@ -575,6 +563,17 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // Window title = app name + build version, e.g. "random-xteink-all-in-one-converter 1.7.0".
+            use tauri::Manager;
+            let title = format!("random-xteink-all-in-one-converter {}", app.package_info().version);
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_title(&title);
+            } else if let Some(w) = app.webview_windows().values().next() {
+                let _ = w.set_title(&title);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             convert,
             preview,

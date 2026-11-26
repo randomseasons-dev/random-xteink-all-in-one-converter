@@ -1,17 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
-export type DeviceId = "x4" | "x4pro" | "x3";
-
-// Device profiles: the choice drives the page size used by the whole pipeline
-// (the backend holds the same table in `xtch_core::Device`).
-export const DEVICES: { id: DeviceId; label: string; w: number; h: number }[] = [
-  { id: "x4", label: "XTEink X4", w: 480, h: 800 },
-  { id: "x4pro", label: "XTEink X4 Pro", w: 480, h: 800 },
-  { id: "x3", label: "XTEink X3", w: 528, h: 792 },
-];
-
-export const deviceOf = (id: DeviceId) => DEVICES.find((d) => d.id === id)!;
+// The one target device (the backend uses the same profile in `xtch_core::Device`).
+export const DEVICE = { label: "XTEink X4 Pro", w: 480, h: 800, screen: "UC8179" };
 
 export const fmtSize = (n: number) =>
   n < 1024
@@ -22,23 +13,13 @@ export const fmtSize = (n: number) =>
 
 export const baseName = (p: string) => p.split(/[\\/]/).pop() || p;
 
-export function DeviceSelect({
-  device,
-  onChange,
-}: {
-  device: DeviceId;
-  onChange: (d: DeviceId) => void;
-}) {
+export function DeviceInfo() {
   return (
     <div className="panel">
       <div className="panel-h">TARGET DEVICE</div>
-      <select value={device} onChange={(e) => onChange(e.target.value as DeviceId)}>
-        {DEVICES.map((d) => (
-          <option key={d.id} value={d.id}>
-            {d.label} ({d.w}×{d.h})
-          </option>
-        ))}
-      </select>
+      <div className="hint">
+        {DEVICE.label} · {DEVICE.w}×{DEVICE.h} · {DEVICE.screen} screen · CrossPoint 2.0
+      </div>
     </div>
   );
 }

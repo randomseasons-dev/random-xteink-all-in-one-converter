@@ -4,10 +4,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import {
-  DeviceId,
-  DeviceSelect,
+  DeviceInfo,
   baseName,
-  deviceOf,
+  DEVICE,
   fmtSize,
   useDismiss,
   useWindowDrop,
@@ -33,15 +32,7 @@ type WallResult = {
 
 const PICTURE_EXT = ["jpg", "jpeg", "png", "webp", "bmp", "gif"];
 
-export default function WallpaperTab({
-  active,
-  device,
-  setDevice,
-}: {
-  active: boolean;
-  device: DeviceId;
-  setDevice: (d: DeviceId) => void;
-}) {
+export default function WallpaperTab({ active }: { active: boolean }) {
   const [files, setFiles] = useState<string[]>([]);
   const [skipped, setSkipped] = useState(0);
   const [browseMenu, setBrowseMenu] = useState(false);
@@ -83,7 +74,7 @@ export default function WallpaperTab({
     };
   }, []);
 
-  // Refresh the preview whenever the inputs, settings, device or index change (debounced).
+  // Refresh the preview whenever the inputs, settings or index change (debounced).
   useEffect(() => {
     if (files.length === 0) {
       setPvUrl(null);
@@ -97,7 +88,7 @@ export default function WallpaperTab({
       try {
         const res = await invoke<{ url: string; total: number; index: number }>(
           "wallpaper_preview",
-          { paths: files, opts: { ...opts, device }, index: pvIndex }
+          { paths: files, opts: opts, index: pvIndex }
         );
         if (cancelled) return;
         setPvUrl(res.url);
@@ -116,7 +107,7 @@ export default function WallpaperTab({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [files, opts, device, pvIndex]);
+  }, [files, opts, pvIndex]);
 
   const pvNext = () => setPvIndex((i) => Math.min(i + 1, Math.max(pvTotal - 1, 0)));
   const pvPrev = () => setPvIndex((i) => Math.max(i - 1, 0));
@@ -149,7 +140,7 @@ export default function WallpaperTab({
     try {
       const res = await invoke<WallResult[]>("create_wallpapers", {
         paths: files,
-        opts: { ...opts, device },
+        opts: opts,
       });
       setResults(res);
     } catch (e) {
@@ -167,9 +158,9 @@ export default function WallpaperTab({
     } finally {
       setBusy(false);
     }
-  }, [files, opts, device]);
+  }, [files, opts]);
 
-  const dev = deviceOf(device);
+  const dev = DEVICE;
 
   return (
     <div hidden={!active}>
@@ -197,9 +188,10 @@ export default function WallpaperTab({
               )}
             </div>
             <div className="dz-sub">
-              Output will be wallpaper files for your xteink device with your
-              chosen settings. They can be used for custom sleep screens or
-              anything you want.
+              Output is a .sleep folder of sleep-screen wallpapers for CrossPoint
+              2.0: copy the .sleep folder to the root of your SD card and set
+              Sleep Screen to Custom. The preview shows the shades your screen
+              will show.
             </div>
             {browseMenu && (
               <div className="browse-menu" onClick={(e) => e.stopPropagation()}>
@@ -275,7 +267,7 @@ export default function WallpaperTab({
 
         {/* MIDDLE: settings */}
         <section className="col">
-          <DeviceSelect device={device} onChange={setDevice} />
+          <DeviceInfo />
 
           <div className="panel">
             <div className="panel-h">BASIC SETTINGS</div>
@@ -320,6 +312,7 @@ export default function WallpaperTab({
               <span>4 gray levels dithering conversion (highly recommended)</span>
             </label>
 
+
             <label className="check">
               <input
                 type="checkbox"
@@ -331,7 +324,7 @@ export default function WallpaperTab({
 
             <div className="fixedinfo">
               Always portrait · {dev.w}×{dev.h} ·{" "}
-              {opts.dither ? "4-gray 2-bit BMP" : "24-bit BMP"}
+              4-gray 2-bit BMP{opts.dither ? "" : " (no dithering)"} · saved to a .sleep folder
             </div>
           </div>
         </section>
